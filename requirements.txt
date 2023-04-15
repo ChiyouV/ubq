@@ -3,3 +3,6 @@ SpeechRecognition
 --extra-index-url https://download.pytorch.org/whl/cu116
 torch
 git+https://github.com/openai/whisper.git
+openai~=0.27.4
+pydub~=0.25.1
+ffmpeg~=5.1.2

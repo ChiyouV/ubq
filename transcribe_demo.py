@@ -4,14 +4,15 @@ import argparse
 import io
 import os
 import speech_recognition as sr
-import whisper
-import torch
+import openai
+import ffmpeg
 
 from datetime import datetime, timedelta
 from queue import Queue
 from tempfile import NamedTemporaryFile
 from time import sleep
 from sys import platform
+from pydub import AudioSegment
 
 
 def main():
@@ -26,13 +27,13 @@ def main():
                         help="How real time the recording is in seconds.", type=float)
     parser.add_argument("--phrase_timeout", default=3,
                         help="How much empty space between recordings before we "
-                             "consider it a new line in the transcription.", type=float)  
+                             "consider it a new line in the transcription.", type=float)
     if 'linux' in platform:
         parser.add_argument("--default_microphone", default='pulse',
                             help="Default microphone name for SpeechRecognition. "
                                  "Run this with 'list' to view available Microphones.", type=str)
     args = parser.parse_args()
-    
+
     # The last time a recording was retreived from the queue.
     phrase_time = None
     # Current raw audio bytes.
@@ -44,7 +45,7 @@ def main():
     recorder.energy_threshold = args.energy_threshold
     # Definitely do this, dynamic energy compensation lowers the energy threshold dramtically to a point where the SpeechRecognizer never stops recording.
     recorder.dynamic_energy_threshold = False
-    
+
     # Important for linux users. 
     # Prevents permanent application hang and crash by using the wrong Microphone
     if 'linux' in platform:
@@ -52,7 +53,7 @@ def main():
         if not mic_name or mic_name == 'list':
             print("Available microphone devices are: ")
             for index, name in enumerate(sr.Microphone.list_microphone_names()):
-                print(f"Microphone with name \"{name}\" found")   
+                print(f"Microphone with name \"{name}\" found")
             return
         else:
             for index, name in enumerate(sr.Microphone.list_microphone_names()):
@@ -61,23 +62,17 @@ def main():
                     break
     else:
         source = sr.Microphone(sample_rate=16000)
-        
-    # Load / Download model
-    model = args.model
-    if args.model != "large" and not args.non_english:
-        model = model + ".en"
-    audio_model = whisper.load_model(model)
 
     record_timeout = args.record_timeout
     phrase_timeout = args.phrase_timeout
 
     temp_file = NamedTemporaryFile().name
     transcription = ['']
-    
+
     with source:
         recorder.adjust_for_ambient_noise(source)
 
-    def record_callback(_, audio:sr.AudioData) -> None:
+    def record_callback(_, audio: sr.AudioData) -> None:
         """
         Threaded callback function to recieve audio data when recordings finish.
         audio: An AudioData containing the recorded bytes.
@@ -91,7 +86,7 @@ def main():
     recorder.listen_in_background(source, record_callback, phrase_time_limit=record_timeout)
 
     # Cue the user that we're ready to go.
-    print("Model loaded.\n")
+    #print("Model loaded.\n")
 
     while True:
         try:
@@ -115,14 +110,17 @@ def main():
                 # Use AudioData to convert the raw data to wav data.
                 audio_data = sr.AudioData(last_sample, source.SAMPLE_RATE, source.SAMPLE_WIDTH)
                 wav_data = io.BytesIO(audio_data.get_wav_data())
+                #Write wav_data to a wav file
+                with open("audio.wav", "wb") as f:
+                    f.write(wav_data.getbuffer())
+                #No need to convert to mp3, just use the wav file
+                #Convert wav to mp3
+                #stream = ffmpeg.input("audio.wav")
+                #stream = ffmpeg.output(stream, "audio.mp3")
+                #ffmpeg.run(stream)
+                #Transcribe the audio
+                text = transcribe("audio.wav")
 
-                # Write wav data to the temporary file as bytes.
-                with open(temp_file, 'w+b') as f:
-                    f.write(wav_data.read())
-
-                # Read the transcription.
-                result = audio_model.transcribe(temp_file, fp16=torch.cuda.is_available())
-                text = result['text'].strip()
 
                 # If we detected a pause between recordings, add a new item to our transcripion.
                 # Otherwise edit the existing one.
@@ -132,7 +130,7 @@ def main():
                     transcription[-1] = text
 
                 # Clear the console to reprint the updated transcription.
-                os.system('cls' if os.name=='nt' else 'clear')
+                os.system('cls' if os.name == 'nt' else 'clear')
                 for line in transcription:
                     print(line)
                 # Flush stdout.
@@ -146,6 +144,23 @@ def main():
     print("\n\nTranscription:")
     for line in transcription:
         print(line)
+
+
+# A function which uses the openai bindings to transcribe audio using the whisper api
+def transcribe(audio_file):
+    # Load your OpenAI API key and set the environment variable
+    openai.api_key = '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'  # Replace with your actual API key
+
+
+    # Open the converted mp3 file and pass it to the OpenAI Whisper API
+    with open("audio.wav", "rb") as f:
+        model_engine = "whisper-1"
+        response = openai.Audio.transcribe(model=model_engine, file=f)
+
+    # Extract the transcribed text from the response
+    transcribed_text = response["text"]
+
+    return transcribed_text
 
 
 if __name__ == "__main__":
