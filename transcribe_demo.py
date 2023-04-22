@@ -5,14 +5,14 @@ import io
 import os
 import speech_recognition as sr
 import openai
-import ffmpeg
 
 from datetime import datetime, timedelta
 from queue import Queue
 from tempfile import NamedTemporaryFile
 from time import sleep
 from sys import platform
-from pydub import AudioSegment
+
+import config
 
 
 def main():
@@ -141,15 +141,20 @@ def main():
         except KeyboardInterrupt:
             break
 
+    full_transcription = ""
     print("\n\nTranscription:")
     for line in transcription:
         print(line)
+        full_transcription = full_transcription + line
 
+    summary = summarize(full_transcription)
+
+    print("Summary: " + summary)
 
 # A function which uses the openai bindings to transcribe audio using the whisper api
 def transcribe(audio_file):
     # Load your OpenAI API key and set the environment variable
-    openai.api_key = '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'  # Replace with your actual API key
+    openai.api_key = config.api_key  # Replace with your actual API key
 
 
     # Open the converted mp3 file and pass it to the OpenAI Whisper API
@@ -161,6 +166,34 @@ def transcribe(audio_file):
     transcribed_text = response["text"]
 
     return transcribed_text
+
+# A function which uses the openai bindings to summarize the given text
+def summarize(text):
+    # Load your OpenAI API key and set the environment variable
+    openai.api_key = config.api_key  # Replace with your actual API key
+
+    # Create a list of messages
+    messages = [
+        {
+            "role": "system",
+            "content": "You will receive a message representing a conversation between one or more individuals."
+                       " You will then produce a summary of the conversation, highlighting each important point."
+                       " Send the summary as your reply with no header, LABEL, or any conversation beyond summary whatsoever. Simply output raw text."
+        },
+        {
+            "role": "user",
+            "content": text
+        }
+    ]
+
+    # Call the ChatCompletion endpoint with the gpt-3.5-turbo model and the messages list
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        temperature=0.7
+    )
+
+    return completion.choices[0].message.content
 
 
 if __name__ == "__main__":
