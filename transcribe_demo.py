@@ -2,10 +2,12 @@
 
 import argparse
 import io
+import json
 import os
 import speech_recognition as sr
 import openai
 
+from firebase import firebase
 from datetime import datetime, timedelta
 from queue import Queue
 from tempfile import NamedTemporaryFile
@@ -13,6 +15,9 @@ from time import sleep
 from sys import platform
 
 import config
+
+app_url = 'https://conversationsummarizer-11571-default-rtdb.firebaseio.com/'
+fb = firebase.FirebaseApplication(app_url, None)
 
 
 def main():
@@ -34,7 +39,7 @@ def main():
                                  "Run this with 'list' to view available Microphones.", type=str)
     args = parser.parse_args()
 
-    # The last time a recording was retreived from the queue.
+    # The last time a recording was retrieved from the queue.
     phrase_time = None
     # Current raw audio bytes.
     last_sample = bytes()
@@ -61,7 +66,7 @@ def main():
                     source = sr.Microphone(sample_rate=16000, device_index=index)
                     break
     else:
-        source = sr.Microphone(sample_rate=16000)
+        source = sr.Microphone(sample_rate=24000)
 
     record_timeout = args.record_timeout
     phrase_timeout = args.phrase_timeout
@@ -149,7 +154,19 @@ def main():
 
     summary = summarize(full_transcription)
 
-    print("Summary: " + summary)
+    print(summary)
+
+    # create a reference to the conversations collection
+    conversations_ref = firebase.FirebaseApplication(app_url + '/conversations', None)
+
+
+    # store the full transcription and the summary as a document
+    result = conversations_ref.post("/", json.loads(summary))
+
+    # print the result
+    print(result)
+
+
 
 # A function which uses the openai bindings to transcribe audio using the whisper api
 def transcribe(audio_file):
@@ -173,16 +190,41 @@ def summarize(text):
     openai.api_key = config.api_key  # Replace with your actual API key
 
     # Create a list of messages
+    example1 = '{"confidence": "0.75", "participants": "3", "summary": "Colleagues discussed concerns about the new product\'s marketing and development. The team leader reassured them that everything was on track for a successful launch. However, some parts of the conversation were unclear due to transcription errors, including the timeline for the product and details on budget allocation.", "title": "Discussion on New Product Launch"}'
+    example2 = 'example2 = \'{"confidence": "0.9", "participants": "2", "Two participants discuss using a Raspberry Pi as a main computer. One expresses their dislike for it, while the other suggests using SSH to control it. The conversation includes some confusion over the Raspberry Pi\'s use, but there were no obvious transcription errors.", "title": "Using Raspberry Pi as Main Computer"}'
+
     messages = [
         {
             "role": "system",
-            "content": "You will receive a message representing a conversation between one or more individuals."
-                       " You will then produce a summary of the conversation, highlighting each important point."
-                       " Send the summary as your reply with no header, LABEL, or any conversation beyond summary whatsoever. Simply output raw text."
+            "content": "Objective: You will receive a message representing a conversation between one or more individuals." +
+                        "First, produce a score which indicates your confidence in the summary. This should essentially be a measure of how correct you think the transcription was, and how much context you think you have for the summary. If the conversation seems to not make sense in places or has one or more seemingly random phrasings, it's probably a transcription error and confidence should reflect this as well."
+                        "Next, produce an integer for the estimated number of participants in the converstaion. Label this 'participants'" +
+                        "Next, produce an internal monologue which reinforces important points in the conversation and identifies focal points. Also, note points which are likely to have been transcription problems." +
+                        "Next, produce a summary of the conversation which highlights each important point. Do not make leaps in logic beyond your context, and instead note when you do not have context or did not understand what was going on."
+                        "Finally, come up with a title for the conversation."
+        },
+        {
+            "role": "system",
+            "content": "Format (*EXTREMELY IMPORTANT*): JSON"
+        },
+        {
+            "role": "system",
+            "content": "Extra-Details: Ignore any non-english words or characters as if they did not exist." +
+            "Also, ensure that each field contains a non-empty string." +
+            "Additionally, if you find probably transcription errors, you should note them." +
+            "Finally, ALWAYS format your response in JSON. Otherwise, the program will CRASH"
+        },
+        {
+            "role": "system",
+            "content": "Example One (NOTICE THE JSON FORMAT): " + example1
+        },
+        {
+            "role": "system",
+            "content": "Example Two: " + example2
         },
         {
             "role": "user",
-            "content": text
+            "content": "Here is your conversation: " + text
         }
     ]
 
@@ -190,10 +232,12 @@ def summarize(text):
     completion = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=messages,
-        temperature=0.7
+        temperature=0.73
     )
 
-    return completion.choices[0].message.content
+    output = completion.choices[0].message.content;
+
+    return output
 
 
 if __name__ == "__main__":
