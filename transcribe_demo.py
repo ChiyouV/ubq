@@ -199,7 +199,6 @@ def summarize(text):
             "content": "Objective: You will receive a message representing a conversation between one or more individuals." +
                         "First, produce a score which indicates your confidence in the summary. This should essentially be a measure of how correct you think the transcription was, and how much context you think you have for the summary. If the conversation seems to not make sense in places or has one or more seemingly random phrasings, it's probably a transcription error and confidence should reflect this as well."
                         "Next, produce an integer for the estimated number of participants in the converstaion. Label this 'participants'" +
-                        "Next, produce an internal monologue which reinforces important points in the conversation and identifies focal points. Also, note points which are likely to have been transcription problems." +
                         "Next, produce a summary of the conversation which highlights each important point. Do not make leaps in logic beyond your context, and instead note when you do not have context or did not understand what was going on."
                         "Finally, come up with a title for the conversation."
         },
