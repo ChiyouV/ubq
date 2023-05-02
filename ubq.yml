@@ -1,0 +1,9 @@
+name: ubq
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8
+  - ffmpeg
+  - pydub
+prefix: C:\Users\chiyo\miniconda3\envs\ubq
